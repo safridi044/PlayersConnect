@@ -30,16 +30,38 @@ class PlayersConnect extends StatelessWidget {
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
+  Future<bool> _checkProfileExists(String uid) async {
+    final doc =
+    await FirebaseFirestore.instance.collection('players').doc(uid).get();
+    return doc.exists;
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
-        if (snapshot.hasData) {
-          return const HomePage();
+
+        if (snapshot.hasData && snapshot.data != null) {
+          final user = snapshot.data!;
+          return FutureBuilder<bool>(
+            future: _checkProfileExists(user.uid),
+            builder: (context, profileSnapshot) {
+              if (profileSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()));
+              }
+              if (profileSnapshot.data == true) {
+                return const HomePage();
+              } else {
+                return const ProfileSetupPage();
+              }
+            },
+          );
         }
         return const LoginPage();
       },
@@ -89,7 +111,10 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   const Text(
                     'PlayersConnect',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple),
                   ),
                   const SizedBox(height: 20),
                   TextField(
@@ -109,8 +134,11 @@ class _LoginPageState extends State<LoginPage> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),
@@ -121,13 +149,16 @@ class _LoginPageState extends State<LoginPage> {
                       backgroundColor: Colors.deepPurple,
                       minimumSize: const Size(double.infinity, 50),
                     ),
-                    child: const Text('Login', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    child: const Text('Login',
+                        style: TextStyle(color: Colors.white, fontSize: 18)),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const RegisterPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterPage(),
+                      ),
                     ),
                     child: const Text('Create new account'),
                   ),
@@ -159,8 +190,6 @@ class _RegisterPageState extends State<RegisterPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
-      // After successful registration, go to profile setup
       if (userCred.user != null) {
         Navigator.pushReplacement(
           context,
@@ -206,7 +235,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 backgroundColor: Colors.deepPurple,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: const Text('Register', style: TextStyle(color: Colors.white, fontSize: 18)),
+              child: const Text(
+                'Register',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
             ),
           ],
         ),
@@ -215,7 +247,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// ================= PROFILE SETUP PAGE (MULTI-PLATFORM) =================
+// ================= PROFILE SETUP PAGE =================
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
@@ -226,7 +258,6 @@ class ProfileSetupPage extends StatefulWidget {
 class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final _usernameController = TextEditingController();
   final List<String> _selectedPlatforms = [];
-
   final List<String> _availablePlatforms = [
     'PlayStation',
     'Xbox',
@@ -248,8 +279,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
     await FirebaseFirestore.instance.collection('players').doc(user.uid).set({
       'email': user.email,
-      'platforms': _selectedPlatforms,
       'username': _usernameController.text.trim(),
+      'platforms': _selectedPlatforms,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -268,10 +299,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Choose your gaming platforms',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+            const Text('Select your platforms',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
@@ -281,9 +310,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   label: Text(platform),
                   selected: isSelected,
                   selectedColor: Colors.deepPurple,
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black,
-                  ),
+                  labelStyle:
+                  TextStyle(color: isSelected ? Colors.white : Colors.black),
                   onSelected: (selected) {
                     setState(() {
                       if (selected) {
@@ -314,10 +342,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   backgroundColor: Colors.deepPurple,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text(
-                  'Save Profile',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
+                child: const Text('Save Profile',
+                    style: TextStyle(color: Colors.white, fontSize: 18)),
               ),
             ),
           ],
@@ -327,7 +353,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 }
 
-// ================= HOME PAGE =================
+// ================= HOME PAGE (CLEANER DESIGN) =================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -372,81 +398,104 @@ class HomePage extends StatelessWidget {
             return const Center(child: Text('No profile found'));
           }
 
+          final username = data['username'] ?? 'Gamer';
+          final platforms =
+              (data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown';
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Greeting section
-                Text(
-                  'Hi, ${data['username'] ?? 'Gamer'} 👋',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Platforms: ${(data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown'}',
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
-                ),
-                const SizedBox(height: 30),
+                // Compact profile header
+                // Compact profile header with popup menu
+                Row(
+                  children: [
+                    // Profile Avatar – also opens edit page on tap
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfileSetupPage(),
+                          ),
+                        );
+                      },
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.deepPurple,
+                        child: Icon(Icons.person, color: Colors.white, size: 30),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
 
-                // Profile Card
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 30,
-                          backgroundColor: Colors.deepPurple,
-                          child: Icon(Icons.person, color: Colors.white, size: 30),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    // Greeting + platforms
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi, $username 👋',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepPurple,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Platforms: $platforms',
+                            style: const TextStyle(fontSize: 14, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Popup menu (⋮)
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.deepPurple),
+                      onSelected: (value) async {
+                        if (value == 'edit') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProfileSetupPage(),
+                            ),
+                          );
+                        } else if (value == 'logout') {
+                          await FirebaseAuth.instance.signOut();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
                             children: [
-                              Text(
-                                data['email'] ?? user.email ?? 'Unknown user',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Platforms: ${(data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown'}',
-                                style: const TextStyle(color: Colors.black54),
-                              ),
+                              Icon(Icons.edit, color: Colors.deepPurple),
+                              SizedBox(width: 10),
+                              Text('Edit Profile'),
                             ],
                           ),
                         ),
-                        IconButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProfileSetupPage(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.edit, color: Colors.deepPurple),
+                        const PopupMenuItem(
+                          value: 'logout',
+                          child: Row(
+                            children: [
+                              Icon(Icons.logout, color: Colors.redAccent),
+                              SizedBox(width: 10),
+                              Text('Logout'),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
+
 
                 const SizedBox(height: 30),
 
-                // Quick Actions Title
+                // Quick Actions
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
@@ -457,7 +506,6 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
 
-                // Feature cards grid
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -479,7 +527,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // Widget for each feature card
   Widget _featureCard(IconData icon, String title, BuildContext context) {
     return GestureDetector(
       onTap: () {
