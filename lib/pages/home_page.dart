@@ -127,7 +127,7 @@ class HomePage extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ProfileSetupPage(),
+                              builder: (context) => const ProfileSetupPage(isEditing: true),
                             ),
                           );
                         } else if (value == 'logout') {
