@@ -215,7 +215,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// ================= PROFILE SETUP PAGE =================
+// ================= PROFILE SETUP PAGE (MULTI-PLATFORM) =================
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
@@ -224,22 +224,31 @@ class ProfileSetupPage extends StatefulWidget {
 }
 
 class _ProfileSetupPageState extends State<ProfileSetupPage> {
-  String? _selectedPlatform;
   final _usernameController = TextEditingController();
+  final List<String> _selectedPlatforms = [];
+
+  final List<String> _availablePlatforms = [
+    'PlayStation',
+    'Xbox',
+    'PC',
+    'Nintendo',
+    'Mobile',
+  ];
 
   Future<void> _saveProfile() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    if (_selectedPlatform == null || _usernameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+    if (_selectedPlatforms.isEmpty || _usernameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all fields')),
+      );
       return;
     }
 
     await FirebaseFirestore.instance.collection('players').doc(user.uid).set({
       'email': user.email,
-      'platform': _selectedPlatform,
+      'platforms': _selectedPlatforms,
       'username': _usernameController.text.trim(),
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -259,25 +268,33 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Choose your platform', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'Choose your gaming platforms',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
-              children: ['PlayStation', 'Xbox', 'PC']
-                  .map(
-                    (platform) => ChoiceChip(
+              children: _availablePlatforms.map((platform) {
+                final isSelected = _selectedPlatforms.contains(platform);
+                return FilterChip(
                   label: Text(platform),
-                  selected: _selectedPlatform == platform,
+                  selected: isSelected,
                   selectedColor: Colors.deepPurple,
-                  onSelected: (selected) {
-                    setState(() => _selectedPlatform = selected ? platform : null);
-                  },
                   labelStyle: TextStyle(
-                    color: _selectedPlatform == platform ? Colors.white : Colors.black,
+                    color: isSelected ? Colors.white : Colors.black,
                   ),
-                ),
-              )
-                  .toList(),
+                  onSelected: (selected) {
+                    setState(() {
+                      if (selected) {
+                        _selectedPlatforms.add(platform);
+                      } else {
+                        _selectedPlatforms.remove(platform);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
             ),
             const SizedBox(height: 24),
             TextField(
@@ -297,7 +314,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   backgroundColor: Colors.deepPurple,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text('Save Profile', style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: const Text(
+                  'Save Profile',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
               ),
             ),
           ],
@@ -368,7 +388,7 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Platform: ${data['platform'] ?? 'Unknown'}',
+                  'Platforms: ${(data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown'}',
                   style: const TextStyle(fontSize: 16, color: Colors.black54),
                 ),
                 const SizedBox(height: 30),
@@ -402,7 +422,7 @@ class HomePage extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Platform: ${data['platform']}',
+                                'Platforms: ${(data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown'}',
                                 style: const TextStyle(color: Colors.black54),
                               ),
                             ],
