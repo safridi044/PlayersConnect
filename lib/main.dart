@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +26,7 @@ class PlayersConnect extends StatelessWidget {
   }
 }
 
-// Auth gate - shows LoginPage or HomePage
+// ================= AUTH GATE =================
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -35,9 +36,7 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         if (snapshot.hasData) {
           return const HomePage();
@@ -48,7 +47,7 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-// LOGIN PAGE
+// ================= LOGIN PAGE =================
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -68,9 +67,8 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text.trim(),
       );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Login failed')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
     }
   }
 
@@ -83,8 +81,7 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.all(24),
           child: Card(
             elevation: 8,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -92,10 +89,7 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   const Text(
                     'PlayersConnect',
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.deepPurple),
                   ),
                   const SizedBox(height: 20),
                   TextField(
@@ -115,12 +109,8 @@ class _LoginPageState extends State<LoginPage> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility),
-                        onPressed: () => setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        }),
+                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),
@@ -131,16 +121,13 @@ class _LoginPageState extends State<LoginPage> {
                       backgroundColor: Colors.deepPurple,
                       minimumSize: const Size(double.infinity, 50),
                     ),
-                    child: const Text('Login',
-                        style: TextStyle(color: Colors.white, fontSize: 18)),
+                    child: const Text('Login', style: TextStyle(color: Colors.white, fontSize: 18)),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => const RegisterPage(),
-                      ),
+                      MaterialPageRoute(builder: (context) => const RegisterPage()),
                     ),
                     child: const Text('Create new account'),
                   ),
@@ -154,7 +141,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// REGISTER PAGE
+// ================= REGISTER PAGE =================
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -168,15 +155,21 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _register() async {
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      Navigator.pop(context);
+
+      // After successful registration, go to profile setup
+      if (userCred.user != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfileSetupPage()),
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Registration failed')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message ?? 'Registration failed')));
     }
   }
 
@@ -213,9 +206,98 @@ class _RegisterPageState extends State<RegisterPage> {
                 backgroundColor: Colors.deepPurple,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: const Text(
-                'Register',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+              child: const Text('Register', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= PROFILE SETUP PAGE =================
+class ProfileSetupPage extends StatefulWidget {
+  const ProfileSetupPage({super.key});
+
+  @override
+  State<ProfileSetupPage> createState() => _ProfileSetupPageState();
+}
+
+class _ProfileSetupPageState extends State<ProfileSetupPage> {
+  String? _selectedPlatform;
+  final _usernameController = TextEditingController();
+
+  Future<void> _saveProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (_selectedPlatform == null || _usernameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+      return;
+    }
+
+    await FirebaseFirestore.instance.collection('players').doc(user.uid).set({
+      'email': user.email,
+      'platform': _selectedPlatform,
+      'username': _usernameController.text.trim(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const HomePage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Set up your Profile')),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Choose your platform', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              children: ['PlayStation', 'Xbox', 'PC']
+                  .map(
+                    (platform) => ChoiceChip(
+                  label: Text(platform),
+                  selected: _selectedPlatform == platform,
+                  selectedColor: Colors.deepPurple,
+                  onSelected: (selected) {
+                    setState(() => _selectedPlatform = selected ? platform : null);
+                  },
+                  labelStyle: TextStyle(
+                    color: _selectedPlatform == platform ? Colors.white : Colors.black,
+                  ),
+                ),
+              )
+                  .toList(),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _usernameController,
+              decoration: const InputDecoration(
+                labelText: 'Your Gamer Tag',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saveProfile,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Save Profile', style: TextStyle(color: Colors.white, fontSize: 18)),
               ),
             ),
           ],
@@ -225,7 +307,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// HOME PAGE (after login)
+// ================= HOME PAGE =================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -251,108 +333,128 @@ class HomePage extends StatelessWidget {
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
             },
-          )
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Greeting
-            Text(
-              'Hi, ${user.email?.split('@')[0]} 👋',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Welcome to PlayersConnect — find and connect with nearby gamers!',
-              style: TextStyle(fontSize: 15, color: Colors.black54),
-            ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('players')
+            .doc(user.uid)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            const SizedBox(height: 30),
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
 
-            // Profile info card
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
+          if (data == null) {
+            return const Center(child: Text('No profile found'));
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Greeting section
+                Text(
+                  'Hi, ${data['username'] ?? 'Gamer'} 👋',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Platform: ${data['platform'] ?? 'Unknown'}',
+                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                ),
+                const SizedBox(height: 30),
+
+                // Profile Card
+                Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.deepPurple,
+                          child: Icon(Icons.person, color: Colors.white, size: 30),
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                data['email'] ?? user.email ?? 'Unknown user',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Platform: ${data['platform']}',
+                                style: const TextStyle(color: Colors.black54),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfileSetupPage(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.edit, color: Colors.deepPurple),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // Quick Actions Title
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Feature cards grid
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    const CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.deepPurple,
-                      child: Icon(Icons.person, color: Colors.white, size: 30),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user.email ?? 'Unknown user',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Platform: Not set yet',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Profile editing coming soon!'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.edit, color: Colors.deepPurple),
-                    ),
+                    _featureCard(Icons.people, 'Nearby Players', context),
+                    _featureCard(Icons.videogame_asset, 'Borrow Games', context),
+                    _featureCard(Icons.chat, 'Chat Rooms', context),
+                    _featureCard(Icons.leaderboard, 'Leaderboard', context),
                   ],
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Features Section
-            const Text(
-              'Quick Actions',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _featureCard(Icons.people, 'Nearby Players', context),
-                _featureCard(Icons.videogame_asset, 'Borrow Games', context),
-                _featureCard(Icons.chat, 'Chat Rooms', context),
-                _featureCard(Icons.leaderboard, 'Leaderboard', context),
               ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -392,4 +494,3 @@ class HomePage extends StatelessWidget {
     );
   }
 }
-
