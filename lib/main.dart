@@ -30,16 +30,38 @@ class PlayersConnect extends StatelessWidget {
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
+  Future<bool> _checkProfileExists(String uid) async {
+    final doc =
+    await FirebaseFirestore.instance.collection('players').doc(uid).get();
+    return doc.exists;
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
-        if (snapshot.hasData) {
-          return const HomePage();
+
+        if (snapshot.hasData && snapshot.data != null) {
+          final user = snapshot.data!;
+          return FutureBuilder<bool>(
+            future: _checkProfileExists(user.uid),
+            builder: (context, profileSnapshot) {
+              if (profileSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()));
+              }
+              if (profileSnapshot.data == true) {
+                return const HomePage();
+              } else {
+                return const ProfileSetupPage();
+              }
+            },
+          );
         }
         return const LoginPage();
       },
@@ -59,6 +81,13 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     try {
@@ -89,7 +118,10 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   const Text(
                     'PlayersConnect',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple),
                   ),
                   const SizedBox(height: 20),
                   TextField(
@@ -109,8 +141,11 @@ class _LoginPageState extends State<LoginPage> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),
@@ -121,13 +156,16 @@ class _LoginPageState extends State<LoginPage> {
                       backgroundColor: Colors.deepPurple,
                       minimumSize: const Size(double.infinity, 50),
                     ),
-                    child: const Text('Login', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    child: const Text('Login',
+                        style: TextStyle(color: Colors.white, fontSize: 18)),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const RegisterPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterPage(),
+                      ),
                     ),
                     child: const Text('Create new account'),
                   ),
@@ -153,15 +191,21 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _register() async {
     try {
       final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
-      // After successful registration, go to profile setup
       if (userCred.user != null) {
+        // After registration we go to profile setup (ProfileSetupPage will handle empty vs existing)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const ProfileSetupPage()),
@@ -206,7 +250,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 backgroundColor: Colors.deepPurple,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: const Text('Register', style: TextStyle(color: Colors.white, fontSize: 18)),
+              child: const Text(
+                'Register',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
             ),
           ],
         ),
@@ -215,7 +262,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// ================= PROFILE SETUP PAGE =================
+// ================= PROFILE SETUP PAGE (prefills existing data) =================
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
@@ -224,25 +271,82 @@ class ProfileSetupPage extends StatefulWidget {
 }
 
 class _ProfileSetupPageState extends State<ProfileSetupPage> {
-  String? _selectedPlatform;
   final _usernameController = TextEditingController();
+  final List<String> _selectedPlatforms = [];
+  final List<String> _availablePlatforms = [
+    'PlayStation',
+    'Xbox',
+    'PC',
+    'Nintendo',
+    'Mobile',
+  ];
+
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingProfile();
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExistingProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('players').doc(user.uid).get();
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null) {
+          _usernameController.text = (data['username'] ?? '') as String;
+          final platforms = data['platforms'];
+          _selectedPlatforms.clear();
+          if (platforms != null && platforms is List) {
+            for (final p in platforms) {
+              if (p is String && !_selectedPlatforms.contains(p)) {
+                _selectedPlatforms.add(p);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // ignore quietly — will show empty form
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
 
   Future<void> _saveProfile() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    if (_selectedPlatform == null || _usernameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+    if (_selectedPlatforms.isEmpty || _usernameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all fields')),
+      );
       return;
     }
 
     await FirebaseFirestore.instance.collection('players').doc(user.uid).set({
       'email': user.email,
-      'platform': _selectedPlatform,
       'username': _usernameController.text.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+      'platforms': _selectedPlatforms,
+      'updatedAt': FieldValue.serverTimestamp(),
+      // keep createdAt if exists by using merge
+    }, SetOptions(merge: true));
 
     Navigator.pushReplacement(
       context,
@@ -254,30 +358,38 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Set up your Profile')),
-      body: Padding(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Choose your platform', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text('Select your platforms',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
-              children: ['PlayStation', 'Xbox', 'PC']
-                  .map(
-                    (platform) => ChoiceChip(
+              children: _availablePlatforms.map((platform) {
+                final isSelected = _selectedPlatforms.contains(platform);
+                return FilterChip(
                   label: Text(platform),
-                  selected: _selectedPlatform == platform,
+                  selected: isSelected,
                   selectedColor: Colors.deepPurple,
+                  labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
                   onSelected: (selected) {
-                    setState(() => _selectedPlatform = selected ? platform : null);
+                    setState(() {
+                      if (selected) {
+                        if (!_selectedPlatforms.contains(platform)) {
+                          _selectedPlatforms.add(platform);
+                        }
+                      } else {
+                        _selectedPlatforms.remove(platform);
+                      }
+                    });
                   },
-                  labelStyle: TextStyle(
-                    color: _selectedPlatform == platform ? Colors.white : Colors.black,
-                  ),
-                ),
-              )
-                  .toList(),
+                );
+              }).toList(),
             ),
             const SizedBox(height: 24),
             TextField(
@@ -297,7 +409,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   backgroundColor: Colors.deepPurple,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text('Save Profile', style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: const Text('Save Profile',
+                    style: TextStyle(color: Colors.white, fontSize: 18)),
               ),
             ),
           ],
@@ -307,7 +420,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 }
 
-// ================= HOME PAGE =================
+// ================= HOME PAGE (CLEANER DESIGN, popup menu) =================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -327,14 +440,7 @@ class HomePage extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
+        // removed top-right logout button as requested
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
@@ -352,81 +458,100 @@ class HomePage extends StatelessWidget {
             return const Center(child: Text('No profile found'));
           }
 
+          final username = data['username'] ?? 'Gamer';
+          final platforms =
+              (data['platforms'] as List<dynamic>?)?.join(', ') ?? 'Unknown';
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Greeting section
-                Text(
-                  'Hi, ${data['username'] ?? 'Gamer'} 👋',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Platform: ${data['platform'] ?? 'Unknown'}',
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
-                ),
-                const SizedBox(height: 30),
+                // Compact profile header with popup menu
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        // avatar tap -> edit profile
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfileSetupPage(),
+                          ),
+                        );
+                      },
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.deepPurple,
+                        child: Icon(Icons.person, color: Colors.white, size: 30),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi, $username 👋',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepPurple,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Platforms: $platforms',
+                            style: const TextStyle(fontSize: 14, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                    ),
 
-                // Profile Card
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 30,
-                          backgroundColor: Colors.deepPurple,
-                          child: Icon(Icons.person, color: Colors.white, size: 30),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                data['email'] ?? user.email ?? 'Unknown user',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Platform: ${data['platform']}',
-                                style: const TextStyle(color: Colors.black54),
-                              ),
+                    // Popup menu (⋮) — includes Edit and Logout
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.deepPurple),
+                      onSelected: (value) async {
+                        if (value == 'edit') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProfileSetupPage(),
+                            ),
+                          );
+                        } else if (value == 'logout') {
+                          await FirebaseAuth.instance.signOut();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: const [
+                              Icon(Icons.edit, color: Colors.deepPurple),
+                              SizedBox(width: 10),
+                              Text('Edit Profile'),
                             ],
                           ),
                         ),
-                        IconButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProfileSetupPage(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.edit, color: Colors.deepPurple),
+                        PopupMenuItem(
+                          value: 'logout',
+                          child: Row(
+                            children: const [
+                              Icon(Icons.logout, color: Colors.redAccent),
+                              SizedBox(width: 10),
+                              Text('Logout'),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
 
                 const SizedBox(height: 30),
 
-                // Quick Actions Title
+                // Quick Actions Section
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
@@ -437,7 +562,6 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
 
-                // Feature cards grid
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -459,7 +583,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // Widget for each feature card
   Widget _featureCard(IconData icon, String title, BuildContext context) {
     return GestureDetector(
       onTap: () {
