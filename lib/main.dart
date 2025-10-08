@@ -82,6 +82,13 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _login() async {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -184,6 +191,13 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _register() async {
     try {
       final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -191,6 +205,7 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _passwordController.text.trim(),
       );
       if (userCred.user != null) {
+        // After registration we go to profile setup (ProfileSetupPage will handle empty vs existing)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const ProfileSetupPage()),
@@ -247,7 +262,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// ================= PROFILE SETUP PAGE =================
+// ================= PROFILE SETUP PAGE (prefills existing data) =================
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
@@ -266,6 +281,54 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     'Mobile',
   ];
 
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingProfile();
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExistingProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('players').doc(user.uid).get();
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null) {
+          _usernameController.text = (data['username'] ?? '') as String;
+          final platforms = data['platforms'];
+          _selectedPlatforms.clear();
+          if (platforms != null && platforms is List) {
+            for (final p in platforms) {
+              if (p is String && !_selectedPlatforms.contains(p)) {
+                _selectedPlatforms.add(p);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // ignore quietly — will show empty form
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
   Future<void> _saveProfile() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -281,8 +344,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       'email': user.email,
       'username': _usernameController.text.trim(),
       'platforms': _selectedPlatforms,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+      'updatedAt': FieldValue.serverTimestamp(),
+      // keep createdAt if exists by using merge
+    }, SetOptions(merge: true));
 
     Navigator.pushReplacement(
       context,
@@ -294,7 +358,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Set up your Profile')),
-      body: Padding(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,12 +376,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   label: Text(platform),
                   selected: isSelected,
                   selectedColor: Colors.deepPurple,
-                  labelStyle:
-                  TextStyle(color: isSelected ? Colors.white : Colors.black),
+                  labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
                   onSelected: (selected) {
                     setState(() {
                       if (selected) {
-                        _selectedPlatforms.add(platform);
+                        if (!_selectedPlatforms.contains(platform)) {
+                          _selectedPlatforms.add(platform);
+                        }
                       } else {
                         _selectedPlatforms.remove(platform);
                       }
@@ -353,7 +420,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 }
 
-// ================= HOME PAGE (CLEANER DESIGN) =================
+// ================= HOME PAGE (CLEANER DESIGN, popup menu) =================
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -373,14 +440,7 @@ class HomePage extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
+        // removed top-right logout button as requested
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
@@ -407,13 +467,12 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Compact profile header
                 // Compact profile header with popup menu
                 Row(
                   children: [
-                    // Profile Avatar – also opens edit page on tap
                     GestureDetector(
                       onTap: () {
+                        // avatar tap -> edit profile
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -428,8 +487,6 @@ class HomePage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 16),
-
-                    // Greeting + platforms
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,7 +508,7 @@ class HomePage extends StatelessWidget {
                       ),
                     ),
 
-                    // Popup menu (⋮)
+                    // Popup menu (⋮) — includes Edit and Logout
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert, color: Colors.deepPurple),
                       onSelected: (value) async {
@@ -467,20 +524,20 @@ class HomePage extends StatelessWidget {
                         }
                       },
                       itemBuilder: (context) => [
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'edit',
                           child: Row(
-                            children: [
+                            children: const [
                               Icon(Icons.edit, color: Colors.deepPurple),
                               SizedBox(width: 10),
                               Text('Edit Profile'),
                             ],
                           ),
                         ),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'logout',
                           child: Row(
-                            children: [
+                            children: const [
                               Icon(Icons.logout, color: Colors.redAccent),
                               SizedBox(width: 10),
                               Text('Logout'),
@@ -492,10 +549,9 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
 
-
                 const SizedBox(height: 30),
 
-                // Quick Actions
+                // Quick Actions Section
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
