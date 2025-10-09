@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_setup_page.dart';
 import 'login_page.dart';
 import 'nearby_players_page.dart';
+import 'chat_room_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -217,6 +218,11 @@ class HomePage extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const NearbyPlayersPage()),
+          );
+        } else if (title == 'Chat Rooms') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatRoomsPage()),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(

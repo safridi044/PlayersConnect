@@ -34,13 +34,22 @@ class _ChatPageState extends State<ChatPage> {
     if (text.isEmpty) return;
 
     final myUid = FirebaseAuth.instance.currentUser!.uid;
+    final myEmail = FirebaseAuth.instance.currentUser!.email ?? 'Unknown';
+
     _msgController.clear();
 
-    await FirebaseFirestore.instance
-        .collection('chats')
-        .doc(_chatId)
-        .collection('messages')
-        .add({
+    final firestore = FirebaseFirestore.instance;
+    final chatRef = firestore.collection('chats').doc(_chatId);
+
+    // ✅ Create or update chat doc with summary info
+    await chatRef.set({
+      'participants': [myUid, widget.otherUid],
+      'lastMessage': text,
+      'lastTimestamp': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // ✅ Add actual message
+    await chatRef.collection('messages').add({
       'senderId': myUid,
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
