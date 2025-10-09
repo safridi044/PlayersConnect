@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'chat_page.dart';
 
 class NearbyPlayersPage extends StatefulWidget {
   const NearbyPlayersPage({super.key});
@@ -99,10 +100,15 @@ class _NearbyPlayersPageState extends State<NearbyPlayersPage> {
   }
 
   void _openChat(Map<String, dynamic> player) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening chat with ${player['username']}...')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          otherUid: player['uid'],
+          otherUsername: player['username'],
+        ),
+      ),
     );
-    // TODO: Add ChatPage() navigation later
   }
 
   @override
