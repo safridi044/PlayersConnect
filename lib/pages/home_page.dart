@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_setup_page.dart';
 import 'login_page.dart';
+import 'nearby_players_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
