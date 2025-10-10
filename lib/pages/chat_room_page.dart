@@ -35,61 +35,90 @@ class ChatRoomsPage extends StatelessWidget {
           return ListView.builder(
             itemCount: chatDocs.length,
             itemBuilder: (context, i) {
-              final chat = chatDocs[i].data() as Map<String, dynamic>;
+              final chatData = chatDocs[i].data() as Map<String, dynamic>;
               final chatId = chatDocs[i].id;
-
-              final lastMsg = chat['lastMessage'] ?? '';
+              final lastMsg = chatData['lastMessage'] ?? '';
               final timestamp =
-              (chat['lastTimestamp'] as Timestamp?)?.toDate();
+              (chatData['lastTimestamp'] as Timestamp?)?.toDate();
               final participants =
-              List<String>.from(chat['participants'] ?? []);
+              List<String>.from(chatData['participants'] ?? []);
               final otherUid =
               participants.firstWhere((id) => id != myUid, orElse: () => '');
 
               if (otherUid.isEmpty) return const SizedBox();
 
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('players')
-                    .doc(otherUid)
-                    .get(),
-                builder: (context, userSnap) {
-                  if (!userSnap.hasData) {
-                    return const ListTile(
-                      title: Text('Loading user...'),
-                    );
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('chats')
+                    .doc(chatId)
+                    .collection('messages')
+                    .orderBy('timestamp', descending: true)
+                    .limit(1)
+                    .snapshots(),
+                builder: (context, msgSnap) {
+                  if (!msgSnap.hasData || msgSnap.data!.docs.isEmpty) {
+                    return const SizedBox();
                   }
 
-                  final username =
-                  userSnap.data!.data() != null
-                      ? (userSnap.data!.get('username') ?? 'Unknown Player')
-                      : 'Unknown Player';
+                  final msg =
+                  msgSnap.data!.docs.first.data() as Map<String, dynamic>;
+                  final readByList = (msg['readBy'] as List?) ?? [];
+                  final isUnread = !readByList.contains(myUid);
 
-                  return ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Colors.deepPurple,
-                      child: Icon(Icons.person, color: Colors.white),
-                    ),
-                    title: Text(username),
-                    subtitle: Text(
-                      lastMsg,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Text(
-                      _formatTime(timestamp),
-                      style: const TextStyle(
-                          color: Colors.black54, fontSize: 12),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatPage(
-                            otherUid: otherUid,
-                            otherUsername: username,
-                          ),
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection('players')
+                        .doc(otherUid)
+                        .get(),
+                    builder: (context, userSnap) {
+                      if (!userSnap.hasData) {
+                        return const ListTile(title: Text('Loading user...'));
+                      }
+
+                      final username = userSnap.data!.data() != null
+                          ? (userSnap.data!.get('username') ?? 'Unknown Player')
+                          : 'Unknown Player';
+
+                      return ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Colors.deepPurple,
+                          child: Icon(Icons.person, color: Colors.white),
                         ),
+                        title: Text(username),
+                        subtitle: Text(
+                          lastMsg,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _formatTime(timestamp),
+                              style: const TextStyle(
+                                  color: Colors.black54, fontSize: 12),
+                            ),
+                            if (isUnread)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4),
+                                child: CircleAvatar(
+                                  radius: 5,
+                                  backgroundColor: Colors.blue,
+                                ),
+                              ),
+                          ],
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatPage(
+                                otherUid: otherUid,
+                                otherUsername: username,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
                   );
