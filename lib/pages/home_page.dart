@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_setup_page.dart';
 import 'login_page.dart';
+import 'nearby_players_page.dart';
+import 'chat_room_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -67,7 +69,7 @@ class HomePage extends StatelessWidget {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withValues(alpha: 0.3),
                                         blurRadius: 15,
                                         spreadRadius: 2,
                                       ),
@@ -76,8 +78,11 @@ class HomePage extends StatelessWidget {
                                   child: const CircleAvatar(
                                     radius: 120,
                                     backgroundColor: Colors.deepPurple,
-                                    child: Icon(Icons.person,
-                                        color: Colors.white, size: 120),
+                                    child: Icon(
+                                      Icons.person,
+                                      color: Colors.white,
+                                      size: 120,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -90,8 +95,8 @@ class HomePage extends StatelessWidget {
                         child: CircleAvatar(
                           radius: 30,
                           backgroundColor: Colors.deepPurple,
-                          child:
-                          Icon(Icons.person, color: Colors.white, size: 30),
+                          child: Icon(Icons.person,
+                              color: Colors.white, size: 30),
                         ),
                       ),
                     ),
@@ -112,7 +117,9 @@ class HomePage extends StatelessWidget {
                           Text(
                             'Platforms: $platforms',
                             style: const TextStyle(
-                                fontSize: 14, color: Colors.black54),
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
                           ),
                         ],
                       ),
@@ -120,14 +127,14 @@ class HomePage extends StatelessWidget {
 
                     // Popup Menu (⋮)
                     PopupMenuButton<String>(
-                      icon:
-                      const Icon(Icons.more_vert, color: Colors.deepPurple),
+                      icon: const Icon(Icons.more_vert, color: Colors.deepPurple),
                       onSelected: (value) async {
                         if (value == 'edit') {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ProfileSetupPage(isEditing: true),
+                              builder: (context) =>
+                              const ProfileSetupPage(isEditing: true),
                             ),
                           );
                         } else if (value == 'logout') {
@@ -136,7 +143,8 @@ class HomePage extends StatelessWidget {
                           if (context.mounted) {
                             Navigator.pushAndRemoveUntil(
                               context,
-                              MaterialPageRoute(builder: (context) => const LoginPage()),
+                              MaterialPageRoute(
+                                  builder: (context) => const LoginPage()),
                                   (route) => false,
                             );
                           }
@@ -189,8 +197,7 @@ class HomePage extends StatelessWidget {
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _featureCard(Icons.people, 'Nearby Players', context),
-                    _featureCard(
-                        Icons.videogame_asset, 'Borrow Games', context),
+                    _featureCard(Icons.videogame_asset, 'Borrow Games', context),
                     _featureCard(Icons.chat, 'Chat Rooms', context),
                     _featureCard(Icons.leaderboard, 'Leaderboard', context),
                   ],
@@ -207,9 +214,21 @@ class HomePage extends StatelessWidget {
   Widget _featureCard(IconData icon, String title, BuildContext context) {
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$title feature coming soon!')),
-        );
+        if (title == 'Nearby Players') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NearbyPlayersPage()),
+          );
+        } else if (title == 'Chat Rooms') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatRoomsPage()),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$title feature coming soon!')),
+          );
+        }
       },
       child: Card(
         color: Colors.white,

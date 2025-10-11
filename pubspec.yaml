@@ -19,10 +19,32 @@ dependencies:
   # Cupertino icons for iOS style
   cupertino_icons: ^1.0.8
 
+  # Location dependencies
+  geolocator: ^13.0.1
+  geocoding: ^3.0.0
+  firebase_messaging: ^15.2.10
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.0
+  flutter_launcher_icons: ^0.13.1
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+
+flutter_native_splash:
+  color: "#0a0a23"
+  image: "assets/splash_logo.png"
+  android_12:
+    image: "assets/splash_logo.png"
+    color: "#0a0a23"
+  android: true
+  ios: true
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/splash_logo.png
