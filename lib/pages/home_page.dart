@@ -189,17 +189,40 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
 
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  physics: const NeverScrollableScrollPhysics(),
+                // Changed from GridView to Row for horizontal layout
+                Row(
                   children: [
-                    _featureCard(Icons.people, 'Nearby Players', context),
-                    _featureCard(Icons.videogame_asset, 'Borrow Games', context),
-                    _featureCard(Icons.chat, 'Chat Rooms', context),
-                    _featureCard(Icons.leaderboard, 'Leaderboard', context),
+                    Expanded(
+                      child: _featureCard(
+                        Icons.people,
+                        'Nearby Players',
+                        context,
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const NearbyPlayersPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _featureCard(
+                        Icons.chat,
+                        'Chat Rooms',
+                        context,
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ChatRoomsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -211,34 +234,25 @@ class HomePage extends StatelessWidget {
   }
 
   // Helper for feature cards
-  Widget _featureCard(IconData icon, String title, BuildContext context) {
+  Widget _featureCard(
+      IconData icon,
+      String title,
+      BuildContext context,
+      VoidCallback onTap,
+      ) {
     return GestureDetector(
-      onTap: () {
-        if (title == 'Nearby Players') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const NearbyPlayersPage()),
-          );
-        } else if (title == 'Chat Rooms') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ChatRoomsPage()),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title feature coming soon!')),
-          );
-        }
-      },
+      onTap: onTap,
       child: Card(
         color: Colors.white,
         elevation: 3,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Center(
+        child: Container(
+          height: 120,
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: Colors.deepPurple, size: 40),
               const SizedBox(height: 10),
