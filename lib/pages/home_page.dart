@@ -1,18 +1,128 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import 'profile_setup_page.dart';
 import 'login_page.dart';
 import 'nearby_players_page.dart';
 import 'chat_room_page.dart';
 
-class HomePage extends StatelessWidget {
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Called when a message is received in the background
+  debugPrint('📩 Background message: ${message.notification?.title}');
+}
+
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser!;
+  State<HomePage> createState() => _HomePageState();
+}
 
+class _HomePageState extends State<HomePage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+  FlutterLocalNotificationsPlugin();
+
+  @override
+  void initState() {
+    super.initState();
+    _setupFirebaseMessaging();
+  }
+
+  // 🔔 Step 1: Setup Firebase Messaging end-to-end
+  Future<void> _setupFirebaseMessaging() async {
+    await _requestNotificationPermission();
+    await _initializeLocalNotifications();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    _setupForegroundListener();
+    _saveAndMonitorFcmToken();
+  }
+
+  // 🔐 Step 2: Request notification permission
+  Future<void> _requestNotificationPermission() async {
+    final settings = await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      debugPrint('✅ Notification permission granted');
+    } else {
+      debugPrint('❌ Notification permission denied');
+    }
+  }
+
+  // 🧩 Step 3: Initialize local notifications for Android
+  Future<void> _initializeLocalNotifications() async {
+    const AndroidInitializationSettings androidInit =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const InitializationSettings initSettings =
+    InitializationSettings(android: androidInit);
+
+    await _localNotifications.initialize(initSettings);
+  }
+
+  // 📩 Step 4: Handle foreground notifications
+  void _setupForegroundListener() {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final notification = message.notification;
+      final android = message.notification?.android;
+
+      if (notification != null && android != null) {
+        _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'high_importance_channel',
+              'High Importance Notifications',
+              importance: Importance.max,
+              priority: Priority.high,
+              showWhen: true,
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  // 💾 Step 5: Save FCM Token + Handle token refresh
+  Future<void> _saveAndMonitorFcmToken() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Save token initially
+    final token = await _messaging.getToken();
+    await _saveTokenToFirestore(user.uid, token);
+
+    // Listen for token refresh (in case it changes)
+    _messaging.onTokenRefresh.listen((newToken) async {
+      await _saveTokenToFirestore(user.uid, newToken);
+      debugPrint('🔁 FCM Token refreshed and updated in Firestore');
+    });
+  }
+
+  Future<void> _saveTokenToFirestore(String uid, String? token) async {
+    if (token == null) return;
+    await FirebaseFirestore.instance.collection('players').doc(uid).set(
+      {'fcmToken': token},
+      SetOptions(merge: true),
+    );
+    debugPrint('📱 FCM Token saved to Firestore: $token');
+  }
+
+  // 🌟 UI Section
+  @override
+  Widget build(BuildContext context) {
+    final user = _auth.currentUser!;
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -37,7 +147,6 @@ class HomePage extends StatelessWidget {
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>?;
-
           if (data == null) {
             return const Center(child: Text('No profile found'));
           }
@@ -51,7 +160,7 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Row
+                // Profile Header
                 Row(
                   children: [
                     GestureDetector(
@@ -69,7 +178,8 @@ class HomePage extends StatelessWidget {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.3),
+                                        color:
+                                        Colors.black.withValues(alpha: 0.3),
                                         blurRadius: 15,
                                         spreadRadius: 2,
                                       ),
@@ -95,8 +205,8 @@ class HomePage extends StatelessWidget {
                         child: CircleAvatar(
                           radius: 30,
                           backgroundColor: Colors.deepPurple,
-                          child: Icon(Icons.person,
-                              color: Colors.white, size: 30),
+                          child:
+                          Icon(Icons.person, color: Colors.white, size: 30),
                         ),
                       ),
                     ),
@@ -124,10 +234,9 @@ class HomePage extends StatelessWidget {
                         ],
                       ),
                     ),
-
-                    // Popup Menu (⋮)
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.deepPurple),
+                      icon:
+                      const Icon(Icons.more_vert, color: Colors.deepPurple),
                       onSelected: (value) async {
                         if (value == 'edit') {
                           Navigator.push(
@@ -138,13 +247,13 @@ class HomePage extends StatelessWidget {
                             ),
                           );
                         } else if (value == 'logout') {
-                          await FirebaseAuth.instance.signOut();
-
+                          await _auth.signOut();
                           if (context.mounted) {
                             Navigator.pushAndRemoveUntil(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const LoginPage()),
+                                builder: (context) => const LoginPage(),
+                              ),
                                   (route) => false,
                             );
                           }
@@ -178,7 +287,7 @@ class HomePage extends StatelessWidget {
 
                 const SizedBox(height: 30),
 
-                // Quick Actions Section
+                // Quick Actions
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
@@ -188,8 +297,6 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // Changed from GridView to Row for horizontal layout
                 Row(
                   children: [
                     Expanded(
@@ -233,7 +340,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // Helper for feature cards
+  // 🔧 Helper widget
   Widget _featureCard(
       IconData icon,
       String title,
