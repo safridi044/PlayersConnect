@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
     await _initializeLocalNotifications();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     _setupForegroundListener();
-    _saveAndMonitorFcmToken();
+    await _saveAndMonitorFcmToken();
   }
 
   // 🔐 Step 2: Request notification permission
@@ -94,29 +94,51 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // 💾 Step 5: Save FCM Token + Handle token refresh
+  // 💾 Step 5: Save & Refresh FCM Token
   Future<void> _saveAndMonitorFcmToken() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // Save token initially
+    // Always fetch and update token on app start/login
     final token = await _messaging.getToken();
     await _saveTokenToFirestore(user.uid, token);
 
-    // Listen for token refresh (in case it changes)
+    // Listen for refresh
     _messaging.onTokenRefresh.listen((newToken) async {
       await _saveTokenToFirestore(user.uid, newToken);
-      debugPrint('🔁 FCM Token refreshed and updated in Firestore');
+      debugPrint('🔁 Token refreshed for ${user.uid}');
     });
   }
 
+  // ✅ Save token to Firestore
   Future<void> _saveTokenToFirestore(String uid, String? token) async {
     if (token == null) return;
     await FirebaseFirestore.instance.collection('players').doc(uid).set(
-      {'fcmToken': token},
+      {'fcmToken': token, 'lastUpdated': FieldValue.serverTimestamp()},
       SetOptions(merge: true),
     );
-    debugPrint('📱 FCM Token saved to Firestore: $token');
+    debugPrint('📱 Token saved for $uid: $token');
+  }
+
+  // 🚪 Step 6: Handle logout (delete old token)
+  Future<void> _logoutUser() async {
+    try {
+      // Delete token locally before sign-out
+      await _messaging.deleteToken();
+      debugPrint('🗑️ Old FCM token deleted');
+
+      await _auth.signOut();
+
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+              (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ Logout error: $e');
+    }
   }
 
   // 🌟 UI Section
@@ -247,16 +269,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                           );
                         } else if (value == 'logout') {
-                          await _auth.signOut();
-                          if (context.mounted) {
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LoginPage(),
-                              ),
-                                  (route) => false,
-                            );
-                          }
+                          await _logoutUser();
                         }
                       },
                       itemBuilder: (context) => [

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'home_page.dart';
 import 'profile_setup_page.dart';
 import 'register_page.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,7 +26,8 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  Future<void> requestNotificationPermission() async {
+  // ✅ Request notification permission
+  Future<void> _requestNotificationPermission() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     NotificationSettings settings = await messaging.requestPermission(
       alert: true,
@@ -41,8 +42,26 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ✅ Update FCM token after login
+  Future<void> _updateFcmToken(User user) async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance.collection('players').doc(user.uid).set(
+          {'fcmToken': token},
+          SetOptions(merge: true),
+        );
+        debugPrint('📱 Updated FCM Token for ${user.uid}: $token');
+      } else {
+        debugPrint('⚠️ No FCM token retrieved.');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to update FCM token: $e');
+    }
+  }
+
+  // ✅ Main login flow
   Future<void> _login() async {
-    // Hide keyboard
     FocusScope.of(context).unfocus();
 
     if (_emailController.text.trim().isEmpty || _passwordController.text.isEmpty) {
@@ -54,7 +73,10 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _loading = true);
 
     try {
-      // Attempt sign in
+      // Request notification permission first
+      await _requestNotificationPermission();
+
+      // Attempt Firebase login
       final userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -65,22 +87,23 @@ class _LoginPageState extends State<LoginPage> {
         throw FirebaseAuthException(code: 'NO_USER', message: 'No user returned from Firebase');
       }
 
-      debugPrint('Login successful for uid=${user.uid}');
+      debugPrint('✅ Login successful for uid=${user.uid}');
 
-      // After sign-in, check if profile exists in Firestore
+      // ✅ Update FCM token immediately after successful login
+      await _updateFcmToken(user);
+
+      // Check if profile exists
       final doc = await FirebaseFirestore.instance.collection('players').doc(user.uid).get();
 
       if (!mounted) return;
 
       if (doc.exists) {
-        // Navigate to HomePage (clear back stack)
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const HomePage()),
               (route) => false,
         );
       } else {
-        // If no profile, navigate to ProfileSetupPage (clear back stack)
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const ProfileSetupPage()),
@@ -109,8 +132,7 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.all(24),
           child: Card(
             elevation: 8,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -173,8 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       )
                           : const Text('Login',
-                          style:
-                          TextStyle(color: Colors.white, fontSize: 18)),
+                          style: TextStyle(color: Colors.white, fontSize: 18)),
                     ),
                   ),
                   const SizedBox(height: 12),

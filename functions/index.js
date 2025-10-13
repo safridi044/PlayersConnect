@@ -5,6 +5,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 
+// 🚀 Trigger when a new message is created
 exports.sendNewMessageNotification = onDocumentCreated(
   "chats/{chatId}/messages/{messageId}",
   async (event) => {
@@ -14,32 +15,36 @@ exports.sendNewMessageNotification = onDocumentCreated(
     const senderId = messageData.senderId;
     const senderName = messageData.senderName || "Someone";
 
-    // 🔹 Get participants from parent chat document
+    // 🔹 Fetch chat document to get both participants
     const chatDoc = await db.collection("chats").doc(chatId).get();
     const participants = chatDoc.get("participants");
 
     if (!participants || participants.length < 2) {
-      console.log("⚠️ Invalid participants list");
+      console.log("⚠️ Invalid or missing participants list");
       return;
     }
 
-    // Determine receiver (the one who’s not the sender)
+    // 🔹 Determine receiver (the one who isn't the sender)
     const receiverId = participants.find((id) => id !== senderId);
     if (!receiverId) {
       console.log("⚠️ Could not determine receiver");
       return;
     }
 
-    // 🔹 Get receiver's FCM token
+    // 🔹 Get receiver document
     const receiverDoc = await db.collection("players").doc(receiverId).get();
-    const fcmToken = receiverDoc.get("fcmToken");
 
-    if (!fcmToken) {
-      console.log(`⚠️ No FCM token for receiver ${receiverId}`);
+    // Try to get multiple tokens (array) first, fallback to single token
+    let tokens = receiverDoc.get("fcmTokens") || [];
+    const singleToken = receiverDoc.get("fcmToken");
+    if (tokens.length === 0 && singleToken) tokens = [singleToken];
+
+    if (tokens.length === 0) {
+      console.log(`⚠️ No FCM tokens found for receiver ${receiverId}`);
       return;
     }
 
-    // 🔹 Send notification
+    // 🔹 Create the notification payload
     const payload = {
       notification: {
         title: `${senderName} sent you a message 💬`,
@@ -47,13 +52,41 @@ exports.sendNewMessageNotification = onDocumentCreated(
       },
       data: {
         chatId: chatId,
+        senderId: senderId,
       },
-      token: fcmToken,
     };
 
     try {
-      await getMessaging().send(payload);
-      console.log(`✅ Message notification sent to ${receiverId}`);
+      // 🔹 Send to all device tokens (multicast)
+      const response = await getMessaging().sendEachForMulticast({
+        tokens: tokens,
+        notification: payload.notification,
+        data: payload.data,
+      });
+
+      // Remove invalid tokens
+      const invalidTokens = [];
+      response.responses.forEach((res, index) => {
+        if (!res.success) {
+          console.warn(
+            `⚠️ Failed for token[${index}] of ${receiverId}:`,
+            res.error?.message
+          );
+          invalidTokens.push(tokens[index]);
+        }
+      });
+
+      if (invalidTokens.length > 0) {
+        const validTokens = tokens.filter((t) => !invalidTokens.includes(t));
+        await receiverDoc.ref.update({ fcmTokens: validTokens });
+        console.log(
+          `🧹 Cleaned ${invalidTokens.length} invalid tokens for ${receiverId}`
+        );
+      }
+
+      console.log(
+        `✅ Sent message notification to ${receiverId} (${tokens.length} devices)`
+      );
     } catch (error) {
       console.error("❌ Error sending notification:", error);
     }
